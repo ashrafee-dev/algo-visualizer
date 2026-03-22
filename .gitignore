@@ -101,3 +101,4 @@ docker-compose.override.yml
 \*.orig
 \*.rej
 
+frontend/tsconfig.tsbuildinfo
