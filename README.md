@@ -1,120 +1,127 @@
-# Algorithms‑in‑Action 🧠➡️🎨
+# Algorithm Visualizer + Algorithm Playground
 
-> **Live Demo →** *coming soon*
+A full-stack **algorithm lab**: Python owns all execution; the UI discovers algorithms from the backend, lets you edit Python in Monaco, run it safely through a controlled executor, and play back structured steps with polished visualizations.
 
-A study‑driven playground where classic data‑structures & algorithms come to life through bite‑sized Python implementations and interactive Streamlit visuals. Learn, iterate, and share—while your résumé quietly levels‑up.
+## Architecture overview
 
----
+| Layer | Responsibility |
+|--------|----------------|
+| **Python (`backend/app/algorithms`)** | Metadata, optional `SOURCE_CODE` template, `run(input_data)` returning `{ "steps", "result" }`, step emission via `StepEmitter`. |
+| **Discovery (`backend/app/discovery`)** | Walks `app.algorithms.*` packages; any module with `METADATA` registers automatically. |
+| **Execution (`backend/app/execution`)** | Built-in runs call `run()`; custom runs `exec` user code and require `run_algorithm(input_data, emitter)`. |
+| **API (`FastAPI`)** | Lists algorithms, serves detail + source, runs default or custom code. |
+| **Frontend (`React` + `Zustand`)** | Fetches algorithms, never hardcodes the catalog; renders visualizers purely from step payloads. |
 
-## ✨ Features - Coming soon
+## Why algorithms stay in Python
 
-| Category            | What you get                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **Algorithms**      | Sorting (Bubble, Insertion, Merge, Quick, Heap) • Graph (BFS, DFS, Dijkstra) • Dynamic Programming (LCS, Knapsack) |
-| **Visuals**         | Auto‑play animations or slider‑scrub frames rendered in Streamlit—no JavaScript required                           |
-| **Clean Code**      | Each algorithm ≤ 50 LOC, type‑hinted, pep8‑formatted, with complexity docs                                         |
-| **Unit Tests**      | `pytest` + GitHub Actions CI keep every refactor safe                                                              |
-| **Benchmarks**      | Tiny timing harness to compare implementations                                                                     |
-| **Container Ready** | Single `Dockerfile` + optional `docker‑compose.yml` (PostgreSQL/Redis examples)                                    |
-| **AWS Samples**     | IaC snippets for App Runner, ECS Fargate (Compose CLI), and Elastic Beanstalk                                      |
+- One source of truth for correctness and pedagogy.
+- Steps are explicit data (snapshots + highlights), not re-implemented animation logic in TypeScript.
+- New files under `backend/app/algorithms/<category>/` show up in the UI after restart (or future hot-reload).
 
----
+## How discovery works
 
-## 🚀 Quick Start
+1. `pkgutil.walk_packages` scans under `app.algorithms`.
+2. Each submodule that defines `METADATA` (Pydantic-valid dict) is registered by `metadata.id`.
+3. `GET /api/algorithms` returns summaries; `GET /api/algorithms/{id}` returns metadata + `SOURCE_CODE` string for the editor.
+4. Categories returned by `GET /api/categories` merge a **canonical order** (`Sorting`, `Searching`, …) with any extra labels found in metadata.
+
+## How the frontend stays free of hardcoded lists
+
+- On load, the app calls `GET /api/algorithms` and `GET /api/categories`.
+- The sidebar and filters render **only** that response.
+- Adding a valid module with `METADATA` is enough; no React code changes.
+
+## How Python emits steps
+
+Algorithms use `StepEmitter`:
+
+- `type` — e.g. `compare`, `swap`, `visit`, `update-distance`, `found`.
+- `message` — human-readable caption for the UI.
+- `snapshot` — serializable view state (e.g. `array`, `nodes`/`edges`).
+- `highlights` — indices, visited sets, current node, etc.
+- Optional `line` — 1-based line in the **editor** `SOURCE_CODE` for Monaco highlighting.
+
+The frontend never infers algorithm semantics; it only animates from `snapshot` / `highlights`.
+
+## Editable code execution
+
+- **Run** — executes the packaged `run()` for `status: "implemented"` algorithms.
+- **Run edited** — sends Monaco text to `POST /api/algorithms/{id}/run-custom`. The snippet must define `run_algorithm(input_data, emitter)` and return a result dict. Execution uses a restricted `__builtins__` (see `runner.py`); this is **not** a full sandbox—suitable for local/dev; isolate further for untrusted input.
+
+## Visualizer mapping
+
+`metadata.visualization_type` selects the renderer: `array`, `graph`, `tree`, `grid`, `string`, `custom`.
+
+## Implemented algorithms (reference)
+
+- **Bubble Sort** — `sorting/bubble_sort.py`
+- **Binary Search** — `searching/binary_search.py`
+- **BFS** — `graphs/bfs.py`
+- **Dijkstra** — `pathfinding/dijkstra.py`
+
+## Scaffolded TODO / coming soon
+
+Includes: selection, insertion, merge, quick, heap sort; linear search; DFS, topological sort, Kruskal, Prim, union-find; A*; sliding window / prefix sum examples; KMP; trie; N-Queens; Sudoku; **Greedy** (activity selection); **Trees** (binary tree traversals). Set `status` to `implemented`, implement `run()`, and return `{ "steps", "result" }`—the UI becomes runnable without frontend changes.
+
+## Scaffold new algorithm files
 
 ```bash
-# clone + install dev deps
-$ git clone https://github.com/<you>/algorithms-in-action.git
-$ cd algorithms-in-action
-$ pip install -r requirements.txt
-
-# run the app
-$ streamlit run streamlit_app.py
-# http://localhost:8501
+python tools/scaffold_algorithm.py --category searching --name "Jump Search"
+python tools/scaffold_algorithm.py --category graphs --name "Bellman Ford"
+python tools/scaffold_algorithm.py --preset all
 ```
 
-Or fire up Docker:
+Flags: `--dry-run`, `--force`. New files default to `status: "todo"` and pick `visualization_type` from category.
+
+## Run locally
+
+### Backend (Python 3.10+ recommended; 3.11+ ideal)
 
 ```bash
-$ docker compose up --build  # http://localhost:8501
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
 ```
 
----
+### Frontend
 
-## 🗂️ Repo Layout
-
-```
-algorithms-in-action/
-├─ algorithms/
-│  ├─ sorting/
-│  │   ├─ merge_sort.py
-│  │   └─ tests/
-│  └─ graphs/
-│      └─ dijkstra.py
-├─ viz/              # Streamlit front‑end
-│  └─ streamlit_app.py
-├─ benchmarks/
-├─ Dockerfile
-├─ docker-compose.yml
-├─ .github/workflows/ci.yml
-└─ README.md
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
----
+The Vite dev server proxies `/api` → `http://127.0.0.1:8000` so the default client uses same-origin `/api`. Override with:
 
-## 🖥️ Live Deployment Cheatsheet
+```bash
+VITE_API_URL=http://localhost:8000/api npm run dev
+```
 
-### Streamlit Community Cloud
+## Project layout (high level)
 
-1. Push the repo to GitHub (public).
-2. Go to [streamlit.io/cloud](https://streamlit.io/cloud) → **New app** → select repo/branch.
-3. Set `main file = viz/streamlit_app.py` → **Deploy**.
+```
+backend/app/
+  algorithms/     # category folders + METADATA modules
+  api/            # FastAPI routes
+  constants/      # canonical categories
+  discovery/      # filesystem / import discovery
+  execution/      # run + custom exec
+  schemas/        # Pydantic contracts
+  services/
+frontend/src/
+  components/     # layout, panels, controls, visualizers, editor
+  hooks/          # playback
+  store/          # Zustand
+  lib/            # API client
+  types/
+tools/
+  scaffold_algorithm.py
+```
 
-### AWS App Runner
+## Assumptions and follow-ups
 
-1. Fork the repo to a private or public GitHub.
-2. App Runner console → **Create service** → *Source code*.
-3. Expose port **8501**; autopilot build.
-
-More options (ECS Fargate via Docker‑Compose, Elastic Beanstalk) inside `aws/`.
-
----
-
-## 📊 Algorithms Implemented - Coming soon
-
-| Group               | Algorithms                                       | Status |
-| ------------------- | ------------------------------------------------ | ------ |
-| Sorting             | Bubble, Selection, Insertion, Merge, Quick, Heap | ✅      |
-| Graphs              | BFS, DFS, Dijkstra, Topological Sort             | ✅      |
-| Dynamic Programming | Fibonacci (memo/tab), LCS, 0‑1 Knapsack          | 🚧     |
-| Misc.               | Binary Search, Union‑Find                        | ✅      |
-
-*Check the ****[Projects](https://github.com/<you>/algorithms-in-action/projects)**** board for the current roadmap.*
-
----
-
-## 🤝 Contributing
-
-1. **Fork & clone** the repo.
-2. Create a new branch: `git checkout -b feat/your‑awesome‑algo`.
-3. Add code **+ unit tests** (`pytest -q`).
-4. Run `pre‑commit run --all-files`.
-5. Open a PR 🙂.
-
-Please avoid posting verbatim premium problem statements—paraphrase or link.
-
----
-
-## 📄 License
-
-Released under the MIT License—see `LICENSE` for details.
-
----
-
-### 🙏 Acknowledgements
-
-* Inspired by *VisuAlgo*, *AlgoExpert*, and countless open‑source contributors.
-* Streamlit logo © Streamlit Inc.; used per Apache 2.0 license.
-
-> Built with ❤️ by **Mahdi Ashrafee** — feedback & stars welcome!
-
+- **Security**: Custom code execution is constrained but not a cryptographic sandbox; do not expose publicly without stronger isolation (subprocess, WASM, etc.).
+- **Hot reload**: Discovery runs at import time; new files need a backend restart unless you add a refresh hook.
+- **Line highlights**: Optional `line` on steps should align with the displayed `SOURCE_CODE` string for accurate Monaco decoration.
